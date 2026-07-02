@@ -1,0 +1,26 @@
+{
+  "name": "@rate-guard/server-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@rate-guard/server"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "dependsOn": [
+          "@rate-guard/server:build",
+          "@rate-guard/server:serve"
+        ],
+        "options": {
+          "jestConfig": "apps/server-e2e/jest.config.cts",
+          "passWithNoTests": true
+        }
+      }
+    }
+  }
+}
