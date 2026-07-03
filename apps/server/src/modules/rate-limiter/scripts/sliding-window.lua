@@ -18,8 +18,11 @@ local window_ms = tonumber(ARGV[2])
 local member = ARGV[3]
 
 -- Use the Redis clock so every server instance shares one time source.
+-- Float literals force double arithmetic: identical on real Redis (Lua 5.1
+-- numbers are doubles, exact up to 2^53) but keeps Lua 5.3-based test VMs
+-- (fengari) from wrapping the epoch-ms product at 32-bit integer bounds.
 local time = redis.call('TIME')
-local now_ms = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local now_ms = tonumber(time[1]) * 1000.0 + math.floor(tonumber(time[2]) / 1000.0)
 
 -- Evict members that slid out of the window.
 redis.call('ZREMRANGEBYSCORE', key, 0, now_ms - window_ms)
