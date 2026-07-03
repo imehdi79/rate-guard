@@ -5,6 +5,7 @@ import { AuthModule } from '../modules/auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { RedisModule } from '../redis/redis.module';
 import { DatabaseModule } from '../database/database.module';
+import { RateLimiterModule } from '../modules/rate-limiter/rate-limiter.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { DatabaseModule } from '../database/database.module';
     AuthModule,
     DatabaseModule,
     RedisModule,
+    RateLimiterModule,
   ],
   controllers: [AppController],
   providers: [AppService],
