@@ -30,6 +30,11 @@ export class AuthGuard implements CanActivate {
         where: {
           api_key: apiKey,
         },
+        // Fetched here so the rate limit guard gets the quota without a
+        // second database round trip per request.
+        include: {
+          quotaConfigs: true,
+        },
       });
       if (!check) {
         return false; // Deny access if the API key is invalid
