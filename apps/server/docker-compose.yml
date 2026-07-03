@@ -1,0 +1,100 @@
+# =============================================================================
+# rate-guard server — Docker Compose
+#
+# Configuration comes from apps/server/.env (this directory is the compose
+# project dir, so .env is loaded automatically for ${...} interpolation).
+# Copy .env.example → .env and set POSTGRES_PASSWORD before first run.
+#
+#   Production-like stack:  docker compose up --build
+#   Dev server (hot reload): docker compose --profile dev up server-dev
+#     (native `bunx nx serve @rate-guard/server` is faster for daily work)
+#
+# Order of operations: db (healthy) → migrate (exit 0) → server.
+# =============================================================================
+
+name: rate-guard
+
+x-build-common: &build-common
+  context: ../..
+  dockerfile: apps/server/Dockerfile
+
+x-database-url: &database-url
+  DATABASE_URL: postgresql://${POSTGRES_USER:-rate_guard}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in apps/server/.env}@db:5432/${POSTGRES_DB:-rate_guard}
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rate_guard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in apps/server/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-rate_guard}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot job: applies committed Prisma migrations, then exits.
+  migrate:
+    build:
+      <<: *build-common
+      target: migrate
+    environment:
+      <<: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  server:
+    build:
+      <<: *build-common
+      target: production
+    env_file:
+      - .env # app-level config; DATABASE_URL/PORT below take precedence
+    environment:
+      <<: *database-url
+      PORT: 3000 # fixed container port; host port is mapped from ${PORT}
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # Hardening: immutable container, no privilege escalation, no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # Optional containerized dev loop (docker compose --profile dev up server-dev).
+  server-dev:
+    profiles: ['dev']
+    build:
+      <<: *build-common
+      target: dev
+    environment:
+      <<: *database-url
+      PORT: 3000
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - ../..:/app
+      # Shield image-installed deps and caches from the host bind mount:
+      - /app/node_modules
+      - /app/apps/server/node_modules
+      - /app/.nx
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

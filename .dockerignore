@@ -1,0 +1,71 @@
+# =============================================================================
+# .dockerignore (workspace root — the Docker build context for all apps)
+#
+# Two goals:
+#   1. Keep the build context small and upload fast.
+#   2. Keep layer cache keys stable: files listed here can never invalidate
+#      a COPY layer, no matter how often they change locally.
+# =============================================================================
+
+# --- VCS / meta --------------------------------------------------------------
+.git
+.gitignore
+**/.DS_Store
+Thumbs.db
+
+# --- Dependencies (always installed inside the image, never copied) ----------
+node_modules
+**/node_modules
+
+# --- Build outputs (always produced inside the image) -------------------------
+**/dist
+**/out-tsc
+**/.next
+**/out
+tmp
+**/*.tsbuildinfo
+
+# --- Prisma generated client (regenerated during the image build) ------------
+apps/*/src/generated
+
+# --- Caches -------------------------------------------------------------------
+.nx
+**/.cache
+**/.swc
+
+# --- Secrets & environment (injected at runtime, never baked into images) ----
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- Tests / lint / formatting (not part of the production build graph) ------
+**/*.spec.ts
+**/*.test.ts
+**/test-output
+**/coverage
+**/jest.config.*
+jest.preset.js
+**/.spec.swcrc
+**/eslint.config.*
+.prettierrc
+.prettierignore
+.editorconfig
+
+# --- Sibling projects: only their package.json is needed (Bun workspace
+#     resolution + frozen lockfile verification). Sources stay out so editing
+#     the Next.js client never invalidates a server image layer. --------------
+apps/client/**
+!apps/client/package.json
+apps/server-e2e/**
+!apps/server-e2e/package.json
+
+# --- Docs / IDE / local tooling -----------------------------------------------
+**/*.md
+.vscode
+.idea
+**/*.log
+
+# --- Docker files themselves (changing them shouldn't bust COPY caches) ------
+**/Dockerfile*
+**/docker-compose*.yml
+.dockerignore
