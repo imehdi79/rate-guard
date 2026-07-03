@@ -15,4 +15,14 @@ export class DatabaseService extends PrismaClient {
 
     super({ adapter });
   }
+
+  async isAlive(): Promise<boolean> {
+    try {
+      await this.$queryRaw`SELECT 1`;
+      return true;
+    } catch (error) {
+      console.error('Database connection error:', error);
+      return false;
+    }
+  }
 }

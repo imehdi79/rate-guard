@@ -12,8 +12,8 @@ export class AppController {
   }
 
   @Public()
-  @Get('public')
-  getPublicData() {
-    return { message: 'This is public data' };
+  @Get('health')
+  isAlive() {
+    return this.appService.isAlive();
   }
 }
