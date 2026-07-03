@@ -2,6 +2,12 @@
   "name": "@rate-guard/server-e2e",
   "version": "0.0.1",
   "private": true,
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.1",
+    "pg": "^8.22.0"
+  },
   "nx": {
     "implicitDependencies": [
       "@rate-guard/server"
