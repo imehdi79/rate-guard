@@ -25,7 +25,7 @@ export class AuthGuard implements CanActivate {
 
     // compare tenant api key with the one in the request header
     const apiKey = req.headers['x-api-key'];
-    if (!apiKey) {
+    if (apiKey) {
       const check = await this.db.tenant.findFirst({
         where: {
           api_key: apiKey,
@@ -35,10 +35,10 @@ export class AuthGuard implements CanActivate {
         return false; // Deny access if the API key is invalid
       }
 
-      req.tenatnt = apiKey; // Attach the tenant information to the request object for further use
+      req.tenant = check; // Attach the tenant record to the request object for further use
       return true; // Allow access if the API key is valid
     }
 
-    return false; // Deny access if the route is not public and no authentication logic is implemented
+    return false; // Deny access if no API key was provided
   }
 }
