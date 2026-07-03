@@ -97,6 +97,9 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 # ---------------------------------------------------------- production ------
 FROM ${BUN_IMAGE} AS production
 
+# Backing-service config (DATABASE_URL, REDIS_URL, ...) is injected at
+# runtime — via compose `environment:`/`env_file:` or the orchestrator —
+# never baked into the image. Only safe, non-secret defaults live here.
 ENV NODE_ENV=production \
     PORT=3000
 

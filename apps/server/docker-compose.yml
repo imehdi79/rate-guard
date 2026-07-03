@@ -21,6 +21,9 @@ x-build-common: &build-common
 x-database-url: &database-url
   DATABASE_URL: postgresql://${POSTGRES_USER:-rate_guard}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in apps/server/.env}@db:5432/${POSTGRES_DB:-rate_guard}
 
+x-redis-url: &redis-url
+  REDIS_URL: redis://redis:6379/0
+
 services:
   db:
     image: postgres:17-alpine
@@ -37,6 +40,23 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
       interval: 5s
       timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # AOF persistence so counters survive restarts. The default noeviction
+    # maxmemory policy is the correct one for rate-limit state: reject writes
+    # under memory pressure instead of silently evicting quota counters.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
       retries: 12
 
   # One-shot job: applies committed Prisma migrations, then exits.
@@ -56,15 +76,17 @@ services:
       <<: *build-common
       target: production
     env_file:
-      - .env # app-level config; DATABASE_URL/PORT below take precedence
+      - .env # app-level config; DATABASE_URL/REDIS_URL/PORT below take precedence
     environment:
-      <<: *database-url
+      <<: [*database-url, *redis-url]
       PORT: 3000 # fixed container port; host port is mapped from ${PORT}
     ports:
       - '${PORT:-3000}:3000'
     depends_on:
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     # Hardening: immutable container, no privilege escalation, no capabilities.
     read_only: true
@@ -82,7 +104,7 @@ services:
       <<: *build-common
       target: dev
     environment:
-      <<: *database-url
+      <<: [*database-url, *redis-url]
       PORT: 3000
     ports:
       - '${PORT:-3000}:3000'
@@ -95,6 +117,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   db-data:
+  redis-data:
