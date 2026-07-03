@@ -1,10 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthGuard } from './guard/auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { DatabaseModule } from '../../database/database.module';
 
 @Global()
 @Module({
-  imports: [],
+  imports: [DatabaseModule],
   controllers: [],
   providers: [
     {
