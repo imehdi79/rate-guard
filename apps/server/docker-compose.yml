@@ -80,6 +80,9 @@ services:
     environment:
       <<: [*database-url, *redis-url]
       PORT: 3000 # fixed container port; host port is mapped from ${PORT}
+      # pino-pretty is a devDependency and absent from this image — force
+      # JSON logs even if the developer .env sets LOG_PRETTY=true.
+      LOG_PRETTY: 'false'
     ports:
       - '${PORT:-3000}:3000'
     depends_on:

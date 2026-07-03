@@ -66,6 +66,8 @@ export class RateLimitGuard implements CanActivate {
     const windowMs = quota ? quota.window_seconds * 1000 : DEFAULT_WINDOW_MS;
 
     const result = await this.rateLimiter.consume(tenant.id, limit, windowMs);
+    // Expose the decision to the request logger (`allowed` field).
+    req.rateLimit = result;
 
     // Quota headers go on every response, allowed or denied.
     res.setHeader('X-RateLimit-Limit', limit);
@@ -96,12 +98,20 @@ export class RateLimitGuard implements CanActivate {
 
   private async logViolation(
     tenantId: string,
-    req: { headers: Record<string, unknown>; path?: string; url?: string },
+    req: {
+      id?: string | number;
+      headers: Record<string, unknown>;
+      path?: string;
+      url?: string;
+    },
   ): Promise<void> {
-    // Reuse the caller's request id when provided, so retries of the same
-    // request cannot produce duplicate rows (request_id is unique).
+    // Prefer the correlation id pino-http assigned (which already honors a
+    // caller-provided X-Request-Id), so the ViolationLog row joins directly
+    // with the request's log lines. Retries of the same request id cannot
+    // produce duplicate rows (request_id is unique).
     const header = req.headers['x-request-id'];
     const requestId =
+      (req.id !== undefined ? String(req.id) : undefined) ??
       (Array.isArray(header) ? header[0] : (header as string | undefined)) ??
       randomUUID();
 

@@ -117,6 +117,8 @@ describe('rate limiting (e2e)', () => {
     const retry = await request({ 'x-request-id': requestId });
     expect(first.status).toBe(429);
     expect(retry.status).toBe(429);
+    // The correlation id is echoed back, joining response, logs and DB row.
+    expect(first.headers['x-request-id']).toBe(requestId);
 
     const { rows } = await db.query(
       `SELECT COUNT(*)::int AS count FROM "ViolationLog" WHERE request_id = $1`,

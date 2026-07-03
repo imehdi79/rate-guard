@@ -129,6 +129,18 @@ describe('RateLimitGuard', () => {
     );
   });
 
+  it('exposes the limiter decision on the request for the logger', async () => {
+    const { ctx, req } = createContext({ tenant });
+
+    await guard.canActivate(ctx);
+
+    expect(req.rateLimit).toEqual({
+      allowed: true,
+      remaining: 4,
+      resetAt: RESET_AT,
+    });
+  });
+
   it('sets the X-RateLimit headers on allowed requests', async () => {
     const { ctx, res } = createContext({ tenant });
 
@@ -185,6 +197,23 @@ describe('RateLimitGuard', () => {
             path: '/api/orders',
           },
         ],
+        skipDuplicates: true,
+      });
+    });
+
+    it('prefers the pino correlation id over the raw header', async () => {
+      const { ctx } = createContext({
+        tenant,
+        id: 'corr-42',
+        headers: { 'x-request-id': 'req-123' },
+      });
+
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        HttpException,
+      );
+
+      expect(db.violationLog.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ request_id: 'corr-42' })],
         skipDuplicates: true,
       });
     });
