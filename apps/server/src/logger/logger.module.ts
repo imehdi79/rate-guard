@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
+import type { Options } from 'pino-http';
 import pretty from 'pino-pretty';
 
 /**
@@ -36,6 +37,49 @@ const prettyStream =
     ? pretty({ singleLine: true })
     : undefined;
 
+const pinoHttpOptions: Options = {
+  level: process.env.LOG_LEVEL ?? 'info',
+  genReqId: correlationId,
+
+  // The per-request completion log. Flat keys, one line per request:
+  // {tenant_id, path, method, status, latency_ms, correlation_id, allowed}
+  customAttributeKeys: { responseTime: 'latency_ms' },
+  customProps: (req: IncomingMessage, res: ServerResponse) => {
+    const ctx = req as IncomingMessage &
+      RequestContext & { originalUrl?: string };
+    // originalUrl, not url: express rewrites req.url relative to the
+    // middleware mount point while the request is in flight.
+    const url = ctx.originalUrl ?? req.url;
+    return {
+      correlation_id: ctx.id !== undefined ? String(ctx.id) : null,
+      tenant_id: ctx.tenant?.id ?? null,
+      path: url?.split('?')[0] ?? null,
+      method: req.method,
+      status: res.statusCode,
+      // null when the rate limiter did not run (public routes).
+      allowed: ctx.rateLimit?.allowed ?? null,
+    };
+  },
+
+  // Minimal serializers double as the per-request child bindings, so
+  // every log line inside a request's lifecycle carries req.id (the
+  // correlation id). Headers are dropped entirely — the x-api-key
+  // value must never reach the logs.
+  serializers: {
+    req: (req: {
+      id: string | number;
+      method: string;
+      url: string;
+      originalUrl?: string;
+    }) => ({
+      id: req.id,
+      method: req.method,
+      path: (req.originalUrl ?? req.url)?.split('?')[0],
+    }),
+    res: (res: { statusCode: number }) => ({ status: res.statusCode }),
+  },
+};
+
 @Module({
   imports: [
     PinoLoggerModule.forRoot({
@@ -45,51 +89,9 @@ const prettyStream =
       // would get no correlation id and no completion log. '/' registers the
       // middleware with app.use(), whose prefix matching covers every path.
       forRoutes: ['/'],
-      pinoHttp: [
-        {
-          level: process.env.LOG_LEVEL ?? 'info',
-          genReqId: correlationId,
-
-          // The per-request completion log. Flat keys, one line per request:
-          // {tenant_id, path, method, status, latency_ms, correlation_id, allowed}
-          customAttributeKeys: { responseTime: 'latency_ms' },
-          customProps: (req: IncomingMessage, res: ServerResponse) => {
-            const ctx = req as IncomingMessage &
-              RequestContext & { originalUrl?: string };
-            // originalUrl, not url: express rewrites req.url relative to the
-            // middleware mount point while the request is in flight.
-            const url = ctx.originalUrl ?? req.url;
-            return {
-              correlation_id: ctx.id !== undefined ? String(ctx.id) : null,
-              tenant_id: ctx.tenant?.id ?? null,
-              path: url?.split('?')[0] ?? null,
-              method: req.method,
-              status: res.statusCode,
-              // null when the rate limiter did not run (public routes).
-              allowed: ctx.rateLimit?.allowed ?? null,
-            };
-          },
-
-          // Minimal serializers double as the per-request child bindings, so
-          // every log line inside a request's lifecycle carries req.id (the
-          // correlation id). Headers are dropped entirely — the x-api-key
-          // value must never reach the logs.
-          serializers: {
-            req: (req: {
-              id: string | number;
-              method: string;
-              url: string;
-              originalUrl?: string;
-            }) => ({
-              id: req.id,
-              method: req.method,
-              path: (req.originalUrl ?? req.url)?.split('?')[0],
-            }),
-            res: (res: { statusCode: number }) => ({ status: res.statusCode }),
-          },
-        },
-        prettyStream,
-      ],
+      // Tuple form only when the pretty stream exists: [options, undefined]
+      // is not a valid [Options, DestinationStream] pair.
+      pinoHttp: prettyStream ? [pinoHttpOptions, prettyStream] : pinoHttpOptions,
     }),
   ],
 })
