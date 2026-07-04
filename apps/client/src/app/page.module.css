@@ -103,6 +103,66 @@
   font-weight: 500;
 }
 
+/* The limit reads like the rest of the number but invites a click. */
+.limitButton {
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.2rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--muted);
+  padding: 0 0.1rem 0.1rem;
+}
+
+.limitButton:hover {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.limitForm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.limitForm input {
+  width: 5.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.limitForm button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.limitForm button[type='submit'] {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.limitForm button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.saveError {
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
 .barTrack {
   height: 10px;
   border-radius: 999px;
