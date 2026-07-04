@@ -1,0 +1,8 @@
+# Hoisted linker: flat, junction-free node_modules (same as the Dockerfile
+# prod-deps stage). Bun's default isolated linker stores junction targets
+# with whatever drive-letter casing the installing shell used; on Windows a
+# mixed tree makes Node resolve one package under two path casings, which
+# splits it into two module instances (`instanceof` across them fails —
+# e.g. HttpException identity in the Nest exception filter).
+[install]
+linker = "hoisted"

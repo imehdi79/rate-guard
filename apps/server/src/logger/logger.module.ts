@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
+import type { DestinationStream } from 'pino';
 import type { Options } from 'pino-http';
-import pretty from 'pino-pretty';
 
 /**
  * Request state attached by upstream middleware/guards that the logger
@@ -32,10 +32,26 @@ const correlationId = (req: IncomingMessage, res: ServerResponse): string => {
 // (collector-friendly). pino-pretty runs as an in-process stream, not a
 // pino `transport`: transports spawn worker threads that resolve their
 // worker.js relative to __dirname, which breaks inside the webpack bundle.
-const prettyStream =
-  process.env.NODE_ENV === 'development' || process.env.LOG_PRETTY === 'true'
-    ? pretty({ singleLine: true })
-    : undefined;
+// Loaded lazily: it is a devDependency and node_modules are external to the
+// bundle, so the production image does not ship it — a static import would
+// crash at startup there. JSON logs are the fallback either way.
+function createPrettyStream(): DestinationStream | undefined {
+  const wanted =
+    process.env.NODE_ENV === 'development' || process.env.LOG_PRETTY === 'true';
+  if (!wanted) {
+    return undefined;
+  }
+  try {
+    const pretty = require('pino-pretty') as (opts: {
+      singleLine: boolean;
+    }) => DestinationStream;
+    return pretty({ singleLine: true });
+  } catch {
+    return undefined;
+  }
+}
+
+const prettyStream = createPrettyStream();
 
 const pinoHttpOptions: Options = {
   level: process.env.LOG_LEVEL ?? 'info',
