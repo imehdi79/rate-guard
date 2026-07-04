@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { DatabaseService } from '../../database/database.service';
 import { TenantConfigService } from '../auth/tenant-config.service';
+import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 import {
   DEFAULT_RATE_LIMIT,
   DEFAULT_WINDOW_MS,
@@ -19,8 +20,10 @@ describe('AdminService', () => {
   let db: {
     tenant: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock };
     quotaConfigs: { upsert: jest.Mock };
+    violationLog: { count: jest.Mock; findMany: jest.Mock };
   };
   let tenants: { invalidate: jest.Mock };
+  let rateLimiter: { currentUsage: jest.Mock };
 
   beforeEach(async () => {
     db = {
@@ -34,14 +37,20 @@ describe('AdminService', () => {
           .fn()
           .mockResolvedValue({ max_requests: 9, window_seconds: 30 }),
       },
+      violationLog: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     tenants = { invalidate: jest.fn().mockResolvedValue(undefined) };
+    rateLimiter = { currentUsage: jest.fn().mockResolvedValue(0) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AdminService,
         { provide: DatabaseService, useValue: db },
         { provide: TenantConfigService, useValue: tenants },
+        { provide: RateLimiterService, useValue: rateLimiter },
       ],
     }).compile();
 
@@ -118,6 +127,86 @@ describe('AdminService', () => {
         window_seconds: 30,
         configured: true,
       });
+    });
+  });
+
+  describe('getStats', () => {
+    const violation = {
+      id: 'v-1',
+      request_id: 'req-1',
+      path: '/api',
+      created_at: new Date('2026-07-04T10:00:00Z'),
+    };
+
+    it('returns 404 for an unknown tenant', async () => {
+      db.tenant.findUnique.mockResolvedValue(null);
+
+      await expect(service.getStats('nope')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('combines quota, live window usage and violation history', async () => {
+      db.tenant.findUnique.mockResolvedValue({
+        ...tenant,
+        quotaConfigs: { max_requests: 10, window_seconds: 30 },
+      });
+      rateLimiter.currentUsage.mockResolvedValue(4);
+      db.violationLog.count.mockResolvedValue(7);
+      db.violationLog.findMany.mockResolvedValue([violation]);
+
+      await expect(service.getStats('tenant-1')).resolves.toEqual({
+        tenantId: 'tenant-1',
+        name: 'acme',
+        quota: { max_requests: 10, window_seconds: 30, configured: true },
+        usage: { current: 4, remaining: 6 },
+        violations: { last_24h: 7, recent: [violation] },
+      });
+
+      // Usage is read from the same window the limiter enforces.
+      expect(rateLimiter.currentUsage).toHaveBeenCalledWith(
+        'tenant-1',
+        30_000,
+      );
+    });
+
+    it('falls back to the default quota when none is configured', async () => {
+      db.tenant.findUnique.mockResolvedValue({ ...tenant, quotaConfigs: null });
+
+      const stats = await service.getStats('tenant-1');
+
+      expect(stats.quota).toEqual({
+        max_requests: DEFAULT_RATE_LIMIT,
+        window_seconds: DEFAULT_WINDOW_MS / 1000,
+        configured: false,
+      });
+      expect(rateLimiter.currentUsage).toHaveBeenCalledWith(
+        'tenant-1',
+        DEFAULT_WINDOW_MS,
+      );
+    });
+
+    it('never reports negative remaining after a quota was tightened', async () => {
+      db.tenant.findUnique.mockResolvedValue({
+        ...tenant,
+        quotaConfigs: { max_requests: 2, window_seconds: 30 },
+      });
+      rateLimiter.currentUsage.mockResolvedValue(5);
+
+      const stats = await service.getStats('tenant-1');
+
+      expect(stats.usage).toEqual({ current: 5, remaining: 0 });
+    });
+
+    it('counts violations over the last 24 hours only', async () => {
+      const before = Date.now();
+      await service.getStats('tenant-1');
+
+      const where = db.violationLog.count.mock.calls[0][0].where;
+      expect(where.tenantId).toBe('tenant-1');
+      const since = where.created_at.gte.getTime();
+      expect(since).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000 - 50);
+      expect(since).toBeLessThanOrEqual(Date.now() - 24 * 60 * 60 * 1000);
     });
   });
 

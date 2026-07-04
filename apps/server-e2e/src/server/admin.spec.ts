@@ -133,9 +133,14 @@ describe('admin API (e2e)', () => {
       '/api/admin/tenants/00000000-0000-0000-0000-000000000000/quota',
       admin(),
     );
+    const unknownStats = await axios.get(
+      '/api/admin/tenants/00000000-0000-0000-0000-000000000000/stats',
+      admin(),
+    );
 
     expect(badBody.status).toBe(400);
     expect(unknown.status).toBe(404);
+    expect(unknownStats.status).toBe(404);
   });
 
   it('quota updates invalidate the config cache and bind immediately', async () => {
@@ -190,5 +195,35 @@ describe('admin API (e2e)', () => {
       window_seconds: 10,
       configured: true,
     });
+  });
+
+  it('stats report live window usage and violations without consuming quota', async () => {
+    // State from the previous test: quota 2/10s, two allowed requests still
+    // inside the window (the denied third was rolled back), one violation.
+    const res = await axios.get(
+      `/api/admin/tenants/${tenantId}/stats`,
+      admin(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.data.tenantId).toBe(tenantId);
+    expect(res.data.name).toBe(TENANT_NAME);
+    expect(res.data.quota).toEqual({
+      max_requests: 2,
+      window_seconds: 10,
+      configured: true,
+    });
+    expect(res.data.usage).toEqual({ current: 2, remaining: 0 });
+    expect(res.data.violations.last_24h).toBe(1);
+    expect(res.data.violations.recent).toHaveLength(1);
+    expect(res.data.violations.recent[0]).toMatchObject({ path: '/api' });
+    expect(res.data.violations.recent[0].request_id).toBeDefined();
+
+    // Polling stats is read-only: usage must not grow from the poll itself.
+    const again = await axios.get(
+      `/api/admin/tenants/${tenantId}/stats`,
+      admin(),
+    );
+    expect(again.data.usage.current).toBe(2);
   });
 });

@@ -10,12 +10,19 @@ import {
 
 describe('RateLimiterService', () => {
   let service: RateLimiterService;
-  let redis: { script: jest.Mock; evalsha: jest.Mock };
+  let redis: {
+    script: jest.Mock;
+    evalsha: jest.Mock;
+    time: jest.Mock;
+    zcount: jest.Mock;
+  };
 
   beforeEach(async () => {
     redis = {
       script: jest.fn().mockResolvedValue('sha-abc'),
       evalsha: jest.fn().mockResolvedValue([1, 9, 1_700_000_060_000]),
+      time: jest.fn().mockResolvedValue(['1700000060', '500000']),
+      zcount: jest.fn().mockResolvedValue(3),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -124,6 +131,19 @@ describe('RateLimiterService', () => {
     expect(redis.script).toHaveBeenCalledTimes(2);
     expect(redis.evalsha).toHaveBeenCalledTimes(2);
     expect(result.allowed).toBe(false);
+  });
+
+  it('counts current usage read-only with the same window boundary as the script', async () => {
+    // Redis TIME 1700000060.500000 -> now_ms 1700000060500; the Lua script
+    // evicts scores <= now - window, so the live range starts exclusive.
+    await expect(service.currentUsage('tenant-1', 30_000)).resolves.toBe(3);
+
+    expect(redis.zcount).toHaveBeenCalledWith(
+      `${RATE_LIMIT_KEY_PREFIX}tenant-1`,
+      `(${1_700_000_060_500 - 30_000}`,
+      '+inf',
+    );
+    expect(redis.evalsha).not.toHaveBeenCalled();
   });
 
   it('rethrows errors other than NOSCRIPT', async () => {

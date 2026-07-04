@@ -36,6 +36,11 @@ export class AdminController {
     return this.admin.getQuota(id);
   }
 
+  @Get(':id/stats')
+  getStats(@Param('id') id: string) {
+    return this.admin.getStats(id);
+  }
+
   @Put(':id/quota')
   updateQuota(@Param('id') id: string, @Body() body: QuotaUpdateDto) {
     return this.admin.updateQuota(id, body);

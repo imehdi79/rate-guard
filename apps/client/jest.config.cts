@@ -7,9 +7,8 @@ const createJestConfig = nextJest({
 const config = {
   displayName: '@rate-guard/client',
   preset: '../../jest.preset.js',
-  transform: {
-    '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
-  },
+  // No extra asset transform: next/jest already stubs CSS modules and static
+  // assets, and the scaffold's @nx/react plugin was never installed.
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   coverageDirectory: '../../coverage/apps/client',
   testEnvironment: 'jsdom',

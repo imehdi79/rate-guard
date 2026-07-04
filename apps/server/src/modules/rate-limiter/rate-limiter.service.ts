@@ -83,6 +83,26 @@ export class RateLimiterService implements OnModuleInit {
     return { allowed: allowed === 1, remaining, resetAt };
   }
 
+  /**
+   * Read-only count of requests currently inside the window — for the
+   * dashboard/stats endpoint. Never registers a request or mutates the set.
+   * Uses the same Redis clock and window boundary as the Lua script (which
+   * evicts scores <= now - window, so live entries are strictly newer).
+   */
+  async currentUsage(
+    identifier: string,
+    windowMs: number = DEFAULT_WINDOW_MS,
+  ): Promise<number> {
+    const [seconds, microseconds] = await this.redis.time();
+    const nowMs =
+      Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000);
+    return this.redis.zcount(
+      `${RATE_LIMIT_KEY_PREFIX}${identifier}`,
+      `(${nowMs - windowMs}`,
+      '+inf',
+    );
+  }
+
   private async loadScript(): Promise<string> {
     const sha = (await this.redis.script('LOAD', this.script)) as string;
     this.scriptSha = sha;
