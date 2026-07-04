@@ -47,3 +47,8 @@ Thumbs.db
 out
 
 test-output
+
+# environment files — real values stay local; copy from the .env.example files
+.env
+.env.local
+.env.*.local
