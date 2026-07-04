@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthGuard } from './guard/auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { TenantConfigService } from './tenant-config.service';
 
 @Global()
 @Module({
@@ -11,7 +12,8 @@ import { APP_GUARD } from '@nestjs/core';
       provide: APP_GUARD,
       useClass: AuthGuard,
     },
+    TenantConfigService,
   ],
-  exports: [],
+  exports: [TenantConfigService],
 })
 export class AuthModule {}

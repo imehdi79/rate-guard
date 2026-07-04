@@ -7,6 +7,7 @@ import { RedisModule } from '../redis/redis.module';
 import { DatabaseModule } from '../database/database.module';
 import { RateLimiterModule } from '../modules/rate-limiter/rate-limiter.module';
 import { LoggerModule } from '../logger/logger.module';
+import { AdminModule } from '../modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { LoggerModule } from '../logger/logger.module';
     DatabaseModule,
     RedisModule,
     RateLimiterModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
