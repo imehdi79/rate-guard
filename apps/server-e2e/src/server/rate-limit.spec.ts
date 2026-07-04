@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosResponse } from 'axios';
 import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
 import { Client } from 'pg';
@@ -78,7 +78,7 @@ describe('rate limiting (e2e)', () => {
   });
 
   it(`allows the first ${LIMIT} requests, then denies with correct headers`, async () => {
-    const responses = [];
+    const responses: AxiosResponse[] = [];
     for (let i = 0; i < 10; i++) {
       responses.push(await request());
     }

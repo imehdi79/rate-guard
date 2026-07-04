@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Public } from '../auth/decorator/auth.decorator';
 import { AdminGuard } from './guard/admin.guard';
-import { AdminService, QuotaUpdateDto } from './admin.service';
+import { AdminService, type QuotaUpdateDto } from './admin.service';
 
 /**
  * @Public() opts out of the tenant AuthGuard (admins are not tenants) and
