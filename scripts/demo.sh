@@ -114,11 +114,16 @@ printf '\n%s$ GET %s/api%s   %sx-api-key: %s…%s\n\n' \
   "$B" "$API_URL" "$RS" "$DIM" "${api_key:0:8}" "$RS"
 
 # --- the money shot -------------------------------------------------------------
+# Headers are read from a -D dump: `%header{}` needs curl >= 7.84, and
+# `read` on curl's newline-less -w output exits 1 under `set -e`.
 allowed=0 denied=0
+hdr_file=$(mktemp)
+trap 'rm -f "$hdr_file"' EXIT
 for i in $(seq 1 "$TOTAL_SHOTS"); do
-  IFS='|' read -r status remaining retry < <(curl -s -o /dev/null \
-    -w '%{http_code}|%header{x-ratelimit-remaining}|%header{retry-after}' \
+  status=$(curl -s -o /dev/null -D "$hdr_file" -w '%{http_code}' \
     -H "x-api-key: $api_key" "$API_URL/api")
+  remaining=$(awk -F': ' 'tolower($1)=="x-ratelimit-remaining"{gsub("\r","",$2); print $2}' "$hdr_file")
+  retry=$(awk -F': ' 'tolower($1)=="retry-after"{gsub("\r","",$2); print $2}' "$hdr_file")
   if [[ $status == 200 ]]; then
     allowed=$((allowed + 1))
     printf '  %s●%s request %d   %s200 OK%s            remaining in window: %s%s%s\n' \
