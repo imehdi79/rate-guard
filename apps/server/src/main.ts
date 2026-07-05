@@ -12,6 +12,50 @@ import { AppModule } from './app/app.module';
 
 type App = Awaited<ReturnType<typeof NestFactory.create>>;
 
+/** Hard ceiling for draining in-flight requests and closing resources. */
+const SHUTDOWN_DEADLINE_MS = 5_000;
+
+/**
+ * Deploy platforms (Railway, K8s, systemd, ...) send SIGTERM and expect the
+ * process to finish what it is doing and exit on its own; without this,
+ * every redeploy drops whatever requests are in flight. app.close() stops
+ * accepting new connections, waits for in-flight responses to complete,
+ * then runs the shutdown hooks that close the Prisma pool and the Redis
+ * client. The deadline guarantees the platform never has to escalate to
+ * SIGKILL if a request or a teardown hangs.
+ */
+function setupGracefulShutdown(app: App) {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      Logger.log(
+        `${signal} received — draining in-flight requests`,
+        'Shutdown',
+      );
+      const deadline = setTimeout(() => {
+        Logger.error(
+          `Shutdown exceeded ${SHUTDOWN_DEADLINE_MS}ms — forcing exit`,
+          undefined,
+          'Shutdown',
+        );
+        process.exit(1);
+      }, SHUTDOWN_DEADLINE_MS);
+      // Never keep the process alive just to run the failsafe timer.
+      deadline.unref();
+
+      app
+        .close()
+        .then(() => {
+          Logger.log('Shutdown complete', 'Shutdown');
+          process.exit(0);
+        })
+        .catch((error) => {
+          Logger.error(`Shutdown failed: ${error}`, undefined, 'Shutdown');
+          process.exit(1);
+        });
+    });
+  }
+}
+
 /**
  * Security headers on every response. Helmet defaults already cover most;
  * the ones named explicitly are tightened or pinned on purpose.
@@ -103,6 +147,7 @@ async function bootstrap() {
   // Buffer until pino takes over so even bootstrap logs come out structured.
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(PinoLogger));
+  setupGracefulShutdown(app);
   setupSecurityHeaders(app);
   setupCors(app);
   const globalPrefix = 'api';

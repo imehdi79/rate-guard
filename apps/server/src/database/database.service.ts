@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class DatabaseService extends PrismaClient {
+export class DatabaseService extends PrismaClient implements OnModuleDestroy {
   constructor(configService: ConfigService) {
     // Hand the adapter a config, not a pg.Pool. The adapter recognizes an
     // external pool via `instanceof pg.Pool` against its own pg import —
@@ -18,6 +18,15 @@ export class DatabaseService extends PrismaClient {
     });
 
     super({ adapter });
+  }
+
+  /**
+   * Runs during app.close() after the HTTP server stopped and in-flight
+   * requests finished — closes the adapter's pg pool so shutdown leaves no
+   * dangling Postgres connections.
+   */
+  async onModuleDestroy() {
+    await this.$disconnect();
   }
 
   async isAlive(): Promise<boolean> {
