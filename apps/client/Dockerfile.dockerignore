@@ -55,6 +55,7 @@ apps/server-e2e/**
 !apps/server-e2e/package.json
 
 # --- Docs / IDE / local tooling -----------------------------------------------
+load
 **/*.md
 .vscode
 .idea

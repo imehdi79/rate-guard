@@ -59,6 +59,9 @@ apps/client/**
 apps/server-e2e/**
 !apps/server-e2e/package.json
 
+# --- Load testing (runs against images, never inside them) --------------------
+load
+
 # --- Docs / IDE / local tooling -----------------------------------------------
 **/*.md
 .vscode

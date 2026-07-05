@@ -1,0 +1,25 @@
+# =============================================================================
+# Load-test overlay: runs k6 INSIDE the deploy stack's internal network, so
+# latency numbers reflect the same container-to-container topology as the VPS
+# (no host NAT in the measured path).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.load.yml run --rm k6
+#
+# Results land in ./load/summary.json; methodology and the committed numbers
+# live in LOAD_TEST.md.
+# =============================================================================
+
+services:
+  k6:
+    image: grafana/k6:latest
+    networks: [internal]
+    environment:
+      BASE_URL: http://server:3000
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env}
+    volumes:
+      - ./load:/load
+    working_dir: /load
+    command: run --summary-export /load/summary.json rate-guard.k6.js
+    depends_on:
+      server:
+        condition: service_healthy

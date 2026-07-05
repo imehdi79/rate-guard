@@ -1,5 +1,22 @@
 # RateGuard
 
+Multi-tenant rate-limiting API gateway — NestJS + Redis sliding window (atomic Lua),
+Postgres audit trail, Next.js live dashboard.
+Live: [rate-guard.mehdify.com](https://rate-guard.mehdify.com) ·
+API docs: [rate-guard-api.mehdify.com/docs](https://rate-guard-api.mehdify.com/docs)
+
+## Performance
+
+Load-tested with k6 against the production Docker stack ([full report](LOAD_TEST.md)):
+
+| Load | p50 | p95 | p99 | errors |
+| --- | --- | --- | --- | --- |
+| **200 req/s** sustained | 0.68 ms | **1.96 ms** | 2.71 ms | **0** / 17,552 requests |
+
+Under a deliberately exhausted quota (5 req/60s, hammered at ~10 req/s for 105s),
+the limiter admitted **exactly** 5 requests per window — 1,020 rejections, every
+one a well-formed 429 with `Retry-After`.
+
 <a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
 
 ✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
