@@ -1,118 +1,49 @@
 # RateGuard
 
-Multi-tenant rate-limiting API gateway — NestJS + Redis sliding window (atomic Lua),
-Postgres audit trail, Next.js live dashboard.
-Live: [rate-guard.mehdify.com](https://rate-guard.mehdify.com) ·
-API docs: [rate-guard-api.mehdify.com/docs](https://rate-guard-api.mehdify.com/docs)
+Multi-tenant rate-limiting API gateway — atomic Redis sliding window (Lua), Postgres audit trail, live dashboard.
+
+![RateGuard demo: requests hitting the quota and the violation counter updating live](docs/demo.gif)
+
+**Live dashboard:** [rate-guard.mehdify.com](https://rate-guard.mehdify.com) ·
+**API + Swagger:** [rate-guard-api.mehdify.com/docs](https://rate-guard-api.mehdify.com/docs)
 
 ## Performance
 
-Load-tested with k6 against the production Docker stack ([full report](LOAD_TEST.md)):
+k6 against the production Docker stack — [full report](LOAD_TEST.md):
 
 | Load | p50 | p95 | p99 | errors |
 | --- | --- | --- | --- | --- |
-| **200 req/s** sustained | 0.68 ms | **1.96 ms** | 2.71 ms | **0** / 17,552 requests |
+| **200 req/s** sustained (60s hold) | 0.68 ms | **1.96 ms** | 2.71 ms | **0** / 17,552 requests |
 
-Under a deliberately exhausted quota (5 req/60s, hammered at ~10 req/s for 105s),
-the limiter admitted **exactly** 5 requests per window — 1,020 rejections, every
-one a well-formed 429 with `Retry-After`.
+Under an exhausted 5 req/60s quota the limiter admitted **exactly** 5 requests
+per sliding window — 1,020 rejections, every one a well-formed 429 with
+`Retry-After`. Every PR re-checks latency in CI
+([perf gate](.github/workflows/perf-gate.yml): 50 req/s, fails above p95 80ms).
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+## Architecture
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
-
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/next?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
-
-## Run tasks
-
-To run the dev server for your app, use:
-
-```sh
-npx nx dev client
+```mermaid
+flowchart LR
+  client[API client] -->|x-api-key| traefik
+  browser[Browser] --> traefik(Traefik · TLS)
+  traefik --> dash[Next.js dashboard]
+  traefik --> api[NestJS gateway]
+  dash -->|server-side proxy, admin key never reaches the browser| api
+  api -->|atomic sliding-window Lua · EVALSHA| redis[(Redis)]
+  api -->|tenants · quotas · violation audit| pg[(Postgres)]
 ```
 
-To create a production bundle:
+Every request carries a correlation id (`X-Request-Id`) that joins the
+response headers, the structured pino logs, and the violation audit rows.
 
-```sh
-npx nx build client
+## Local setup
+
+```bash
+git clone https://github.com/imehdi79/rate-guard && cd rate-guard
+bun install
+cp apps/server/.env.example apps/server/.env && cp apps/client/.env.example apps/client/.env
+docker compose -f apps/server/docker-compose.yml up -d db redis migrate && (cd apps/server && bunx prisma generate)
+bunx nx run-many -t serve dev
 ```
 
-To see all available targets to run for a project, run:
-
-```sh
-npx nx show project client
-```
-
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
-
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Add new projects
-
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
-
-Use the plugin's generator to create new projects.
-
-To generate a new application, use:
-
-```sh
-npx nx g @nx/next:app demo
-```
-
-To generate a new library, use:
-
-```sh
-npx nx g @nx/react:lib mylib
-```
-
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
-
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Set up CI!
-
-### Step 1
-
-To connect to Nx Cloud, run the following command:
-
-```sh
-npx nx connect
-```
-
-Connecting to Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-### Step 2
-
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
-```
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/next?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+Dashboard: http://localhost:3000 · API + docs: http://localhost:3001/docs
