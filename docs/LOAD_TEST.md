@@ -5,7 +5,7 @@ topology that runs on the VPS (k6 joins the compose `internal` network; no host
 NAT in the measured path; Postgres and Redis are real, not mocked).
 
 **All thresholds passed.** Full scenario definitions and assertions:
-[`load/rate-guard.k6.js`](load/rate-guard.k6.js).
+[`load/rate-guard.k6.js`](../load/rate-guard.k6.js).
 
 ## Results
 

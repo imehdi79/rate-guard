@@ -9,7 +9,7 @@ Multi-tenant rate-limiting API gateway — atomic Redis sliding window (Lua), Po
 
 ## Performance
 
-k6 against the production Docker stack — [full report](LOAD_TEST.md):
+k6 against the production Docker stack — [full report](docs/LOAD_TEST.md):
 
 | Load | p50 | p95 | p99 | errors |
 | --- | --- | --- | --- | --- |
@@ -35,6 +35,9 @@ flowchart LR
 
 Every request carries a correlation id (`X-Request-Id`) that joins the
 response headers, the structured pino logs, and the violation audit rows.
+
+Why sliding window over token bucket, why one Lua script, why the audit
+lives in Postgres: [docs/ADR.md](docs/ADR.md).
 
 ## Local setup
 

@@ -6,7 +6,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.load.yml run --rm k6
 #
 # Results land in ./load/summary.json; methodology and the committed numbers
-# live in LOAD_TEST.md.
+# live in docs/LOAD_TEST.md.
 # =============================================================================
 
 services:
