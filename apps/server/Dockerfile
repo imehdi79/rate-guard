@@ -115,9 +115,10 @@ USER bun
 
 EXPOSE 3000
 
-# Exec-form healthcheck (no shell in the hot path); hits the global prefix.
+# Exec-form healthcheck (no shell in the hot path); hits the public health
+# endpoint — the bare /api route requires a tenant key and would 403.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api`).then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/health`).then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 CMD ["bun", "main.js"]
 

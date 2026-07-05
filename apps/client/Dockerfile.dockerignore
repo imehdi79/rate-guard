@@ -1,0 +1,66 @@
+# BuildKit uses this file (instead of the root .dockerignore) for builds of
+# apps/client/Dockerfile — the root one is tuned for the server image and
+# excludes the client sources entirely.
+
+# --- VCS / meta --------------------------------------------------------------
+.git
+.gitignore
+**/.DS_Store
+Thumbs.db
+
+# --- Dependencies (always installed inside the image) -------------------------
+node_modules
+**/node_modules
+
+# --- Build outputs (always produced inside the image) -------------------------
+**/dist
+**/out-tsc
+**/.next
+**/out
+tmp
+**/*.tsbuildinfo
+
+# --- Prisma generated client (server concern) ---------------------------------
+apps/*/src/generated
+
+# --- Caches -------------------------------------------------------------------
+.nx
+**/.cache
+**/.swc
+
+# --- Secrets & environment (injected at runtime, never baked into images) ----
+**/.env
+**/.env.*
+!**/.env.example
+
+# --- Tests / lint / formatting -------------------------------------------------
+**/*.spec.ts
+**/*.spec.tsx
+**/*.test.ts
+**/test-output
+**/coverage
+**/jest.config.*
+jest.preset.js
+**/.spec.swcrc
+**/eslint.config.*
+.prettierrc
+.prettierignore
+.editorconfig
+
+# --- Sibling projects: only their package.json is needed (Bun workspace
+#     resolution + frozen lockfile verification). -------------------------------
+apps/server/**
+!apps/server/package.json
+apps/server-e2e/**
+!apps/server-e2e/package.json
+
+# --- Docs / IDE / local tooling -----------------------------------------------
+**/*.md
+.vscode
+.idea
+**/*.log
+
+# --- Docker files themselves ---------------------------------------------------
+**/Dockerfile*
+**/docker-compose*.yml
+.dockerignore

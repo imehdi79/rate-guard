@@ -1,0 +1,154 @@
+# =============================================================================
+# rate-guard — VPS deploy stack behind an EXISTING Traefik container
+#
+# This compose does not run Traefik itself: it joins Traefik's docker
+# network (external) and exposes the two apps via router labels only —
+# nothing publishes host ports, Postgres and Redis stay internal.
+#
+#   Prerequisites on the VPS:
+#     1. Traefik is running and attached to a docker network
+#        (default name here: "traefik"; override with TRAEFIK_NETWORK).
+#     2. cp .env.example .env   and fill in the secrets.
+#     3. DNS (Cloudflare): A/CNAME records for
+#          ${DASHBOARD_DOMAIN}  -> VPS   (dashboard)
+#          ${API_DOMAIN}        -> VPS   (API + /docs)
+#
+#   Deploy / redeploy:  docker compose up -d --build
+#   (the server drains in-flight requests on SIGTERM, so redeploys are
+#   graceful by themselves)
+#
+# For the local dev stack without Traefik, see apps/server/docker-compose.yml.
+# =============================================================================
+
+name: rate-guard
+
+networks:
+  # App-internal traffic: db <-> server <-> client proxy calls.
+  internal:
+  # Traefik's own network — must already exist (docker network create traefik).
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
+
+volumes:
+  db-data:
+  redis-data:
+
+x-server-build: &server-build
+  context: .
+  dockerfile: apps/server/Dockerfile
+
+x-database-url: &database-url
+  DATABASE_URL: postgresql://${POSTGRES_USER:-rate_guard}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-rate_guard}
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rate_guard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rate_guard}
+    networks: [internal]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # AOF persistence + default noeviction: rate-limit state must reject
+    # writes under memory pressure, never silently evict quota counters.
+    command: ['redis-server', '--appendonly', 'yes']
+    networks: [internal]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # One-shot job: applies committed Prisma migrations, then exits.
+  migrate:
+    build:
+      <<: *server-build
+      target: migrate
+    environment:
+      <<: *database-url
+    networks: [internal]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  server:
+    build:
+      <<: *server-build
+      target: production
+    environment:
+      <<: *database-url
+      REDIS_URL: redis://redis:6379/0
+      PORT: 3000
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env}
+      # Browser origins allowed to call the API cross-origin. Empty = none
+      # (fail closed). The dashboard does not need an entry — its Next.js
+      # proxy talks to the server over the internal network.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_PRETTY: 'false'
+    networks: [internal, traefik]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.rate-guard-api.rule=Host(`${API_DOMAIN:-rate-guard-api.mehdify.com}`)
+      - traefik.http.routers.rate-guard-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.rate-guard-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.rate-guard-api.loadbalancer.server.port=3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # Hardening: immutable container, no privilege escalation, no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  client:
+    build:
+      context: .
+      dockerfile: apps/client/Dockerfile
+      target: production
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # The route-handler proxy reaches the API over the internal network;
+      # the admin key never leaves the server side of Next.js.
+      RATE_GUARD_API_URL: http://server:3000
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env}
+    networks: [internal, traefik]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.rate-guard-dashboard.rule=Host(`${DASHBOARD_DOMAIN:-rate-guard.mehdify.com}`)
+      - traefik.http.routers.rate-guard-dashboard.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.rate-guard-dashboard.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.rate-guard-dashboard.loadbalancer.server.port=3000
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
