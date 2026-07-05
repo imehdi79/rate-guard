@@ -52,3 +52,6 @@ test-output
 .env
 .env.local
 .env.*.local
+
+# demo script cache (holds a tenant api key)
+scripts/.demo-tenant.env
