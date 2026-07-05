@@ -1,0 +1,40 @@
+# Latency regression gate: every PR boots the production Docker stack and
+# must serve 50 req/s for 10s with p95 < 80ms and no errors (load/smoke.k6.js
+# thresholds fail the k6 process, which fails the pipeline).
+name: perf gate
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+jobs:
+  k6-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare environment
+        run: |
+          # The deploy compose joins an external Traefik network; CI has no
+          # Traefik, but the network must exist for the stack to start.
+          docker network create traefik
+          cat > .env <<'EOF'
+          POSTGRES_PASSWORD=ci-only-postgres-password
+          ADMIN_API_KEY=ci-only-admin-key
+          EOF
+
+      - name: Build and start the production stack
+        run: docker compose up -d --build --wait
+
+      - name: k6 latency regression gate (50 req/s for 10s, p95 < 80ms)
+        run: docker compose -f docker-compose.yml -f docker-compose.load.yml run --rm k6 run smoke.k6.js
+
+      - name: Server logs (on failure)
+        if: failure()
+        run: docker compose logs --tail 200 server db redis migrate
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
